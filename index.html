@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Tilstand">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Tilstandsregistrering</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3f4f6;color:#151515;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+header{background:#111;color:#fff;padding:16px;position:sticky;top:0;z-index:5}header h1{margin:0;font-size:20px}.muted{color:#707070;font-size:12px}
+main{max-width:900px;margin:auto;padding:14px 14px 90px}.card{background:#fff;border-radius:16px;padding:15px;margin:0 0 12px;box-shadow:0 1px 5px #0001}
+button{border:0;border-radius:11px;padding:12px 14px;font:inherit;font-weight:650}.primary{background:#111;color:#fff}.secondary{background:#e9ebee}.danger{background:#ffe7e7;color:#a00}
+input,select,textarea{width:100%;border:1px solid #ccc;border-radius:10px;padding:11px;font:inherit;background:#fff}textarea{min-height:120px}
+label{display:block;font-size:13px;font-weight:650;margin:10px 0 6px}.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.list button{display:block;width:100%;text-align:left;background:#fff;border-bottom:1px solid #eee;border-radius:0}.list button.active{background:#eef0f2}
+.photo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.photo-grid img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:9px}
+.empty{text-align:center;padding:30px 10px;color:#777}.pill{display:inline-block;background:#eee;border-radius:99px;padding:4px 8px;font-size:11px;margin:3px}
+nav{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #ddd;padding:9px;display:flex;justify-content:center;z-index:6}
+nav button{width:min(900px,96%)}@media(max-width:650px){.row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header><h1>🏗️ Tilstandsregistrering</h1><div style="font-size:12px;opacity:.75">v3 – mobil webapp prototype</div></header>
+<main>
+<section id="home">
+<div class="card">
+<h2>Projekt</h2>
+<label>Projektnavn</label><input id="project" placeholder="Fx Boligkompleks – Blok A">
+<div class="row"><div><label>Bygning/blok</label><input id="building" placeholder="Blok A"></div><div><label>Etage</label><input id="floor" placeholder="2. sal"></div></div>
+<div class="actions"><button class="primary" id="newBtn">＋ Opret registrering</button></div>
+</div>
+<div class="card"><h2>Registreringer</h2><div id="records" class="list"></div></div>
+<div class="card"><h2>Projekt</h2><div class="actions"><button class="secondary" id="backup">Eksportér backup</button><button class="secondary" id="restoreBtn">Importér backup</button><input id="restore" type="file" accept=".json" hidden></div><p class="muted">Data gemmes lokalt på denne enhed. Tag en backup med jævne mellemrum.</p></div>
+</section>
+<section id="edit" hidden></section>
+</main>
+<nav><button class="secondary" id="homeBtn">← Til oversigten</button></nav>
+<script>
+const S="tilstand_v3";
+let data=JSON.parse(localStorage.getItem(S)||'{"project":"","building":"","floor":"","records":[]}');
+let current=null, photos=[];
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const save=()=>localStorage.setItem(S,JSON.stringify(data));
+function showHome(){ $("home").hidden=false;$("edit").hidden=true; renderList(); }
+function renderList(){
+ $("project").value=data.project||"";$("building").value=data.building||"";$("floor").value=data.floor||"";
+ const r=data.records;
+ $("records").innerHTML=r.length?r.slice().reverse().map(x=>`<button onclick="openRec('${x.id}')"><b>#${x.nr} – ${esc(x.part)}</b><br><span class="pill">${esc(x.severity)}</span><span class="pill">${esc(x.status)}</span><div class="muted">${esc(x.location||"Placering ikke angivet")}</div></button>`).join(""):`<div class="empty">Ingen registreringer endnu.</div>`;
+}
+function newRec(){
+ data.project=$("project").value;data.building=$("building").value;data.floor=$("floor").value;
+ const r={id:Date.now().toString(36),nr:data.records.length?Math.max(...data.records.map(x=>+x.nr||0))+1:1,project:data.project,building:data.building,floor:data.floor,part:"Facade",location:"",severity:"Ukendt",moisture:"Ukendt",status:"Registreret",note:"",cause:"",investigation:"",intervention:"",price:"",risk:"",photos:[]};
+ data.records.push(r);save();openRec(r.id);
+}
+window.openRec=id=>{current=data.records.find(x=>x.id===id);photos=[...(current.photos||[])];$("home").hidden=true;$("edit").hidden=false;renderEditor()};
+function renderEditor(){
+ const r=current;
+ $("edit").innerHTML=`<div class="card"><h2>Registrering #${r.nr}</h2><div class="muted">Redigerbar – gem ændringer når som helst</div>
+<label>Bygningsdel</label><select id="part">${["Facade","Tag","Vinduer/døre","Sokkel/fundament","Kælder","Altan","Indvendige vægge","Gulv/loft","Varme","Ventilation","Vand/afløb","El","Andet"].map(x=>`<option ${x===r.part?"selected":""}>${x}</option>`).join("")}</select>
+<div class="row"><div><label>Placering</label><input id="location" value="${esc(r.location)}"></div><div><label>Etage</label><input id="floor2" value="${esc(r.floor)}"></div></div>
+<div class="row"><div><label>Alvorlighed</label><select id="severity">${["Ukendt","Lav","Middel","Høj","Akut"].map(x=>`<option ${x===r.severity?"selected":""}>${x}</option>`).join("")}</select></div><div><label>Status</label><select id="status">${["Registreret","Kræver undersøgelse","Afklaret","Løsning valgt","Udført"].map(x=>`<option ${x===r.status?"selected":""}>${x}</option>`).join("")}</select></div></div>
+<label>Synlig fugt?</label><select id="moisture">${["Ukendt","Nej","Ja"].map(x=>`<option ${x===r.moisture?"selected":""}>${x}</option>`).join("")}</select>
+<label>📷 Billeder</label><input id="camera" type="file" accept="image/*" capture="environment" multiple><div class="photo-grid">${photos.map((p,i)=>`<div><img src="${p}"><button class="danger" onclick="delPhoto(${i})">Fjern</button></div>`).join("")}</div>
+<label>🎙️ Observation</label><textarea id="note" placeholder="Tryk på mikrofonen på iPhone-tastaturet og tal...">${esc(r.note)}</textarea>
+<h3>Faglig vurdering</h3>
+<label>Mulig årsag (hypotese)</label><textarea id="cause">${esc(r.cause)}</textarea>
+<label>Yderligere undersøgelse</label><textarea id="investigation">${esc(r.investigation)}</textarea>
+<label>Muligt indgreb</label><textarea id="intervention">${esc(r.intervention)}</textarea>
+<div class="row"><div><label>Pris/overslag</label><input id="price" value="${esc(r.price)}"></div><div><label>Risiko</label><input id="risk" value="${esc(r.risk)}"></div></div>
+<div class="actions"><button class="primary" id="saveBtn">Gem ændringer</button><button class="secondary" id="aiBtn">🤖 Lav AI-prompt</button><button class="danger" id="delBtn">Slet</button></div>
+<textarea id="aiOut" readonly placeholder="Her kommer et AI-prompt, du kan bruge sammen med billederne..."></textarea></div>`;
+ $("camera").onchange=e=>[...e.target.files].forEach(f=>{let rd=new FileReader();rd.onload=()=>{photos.push(rd.result);renderEditor()};rd.readAsDataURL(f)});
+ $("saveBtn").onclick=saveRec;$("delBtn").onclick=deleteRec;$("aiBtn").onclick=aiPrompt;
+}
+window.delPhoto=i=>{photos.splice(i,1);renderEditor()};
+function saveRec(){
+ Object.assign(current,{part:$("part").value,location:$("location").value,floor:$("floor2").value,severity:$("severity").value,status:$("status").value,moisture:$("moisture").value,note:$("note").value,cause:$("cause").value,investigation:$("investigation").value,intervention:$("intervention").value,price:$("price").value,risk:$("risk").value,photos});
+ save();alert("Gemt ✓");
+}
+function deleteRec(){if(confirm("Slet registrering #"+current.nr+"?")){data.records=data.records.filter(x=>x.id!==current.id);save();current=null;showHome()}}
+function aiPrompt(){
+ $("aiOut").value=`Du er byggesagkyndig rådgiver med fokus på renovering. Analyser registreringen og de vedhæftede billeder.\
+Projekt: ${current.project||"Ikke angivet"}\
+Blok: ${current.building||"Ikke angivet"}\
+Etage: ${current.floor||"Ikke angivet"}\
+Registrering: #${current.nr}\
+Bygningsdel: ${current.part}\
+Placering: ${current.location||"Ikke angivet"}\
+Min observation: ${current.note||"Ingen"}\
+\
+Svar med: 1) sikre observationer 2) mulige årsager, tydeligt som hypoteser 3) ekstra undersøgelser 4) foreløbig alvor og begrundelse 5) mulige indgreb 6) relevante faggrupper 7) manglende oplysninger til pris/projektering 8) risiko for økonomi, tid og kvalitet. Gæt ikke på skjulte forhold.`;
+}
+$("newBtn").onclick=newRec;
+$("homeBtn").onclick=showHome;
+$("project").oninput=e=>{data.project=e.target.value;save()};$("building").oninput=e=>{data.building=e.target.value;save()};$("floor").oninput=e=>{data.floor=e.target.value;save()};
+$("backup").onclick=()=>{let a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify(data)],{type:"application/json"}));a.download="tilstandsprojekt-backup.json";a.click()};
+$("restoreBtn").onclick=()=>$("restore").click();
+$("restore").onchange=e=>{let f=e.target.files[0];if(!f)return;let rd=new FileReader();rd.onload=()=>{try{data=JSON.parse(rd.result);save();showHome();alert("Backup importeret ✓")}catch{alert("Kunne ikke importere backup")}};rd.readAsText(f)};
+renderList();
+</script>
+</body></html>
